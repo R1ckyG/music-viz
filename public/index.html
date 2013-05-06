@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title> Upload Please</title>
+  <script type="text/javascript" src="http://d3js.org/d3.v2.js"></script>
+	<script type="text/javascript">
+
+    function uploadProgress(evt){
+      if (evt.lengthComputable) {
+        var percentComplete = Math.round(evt.loaded * 100 / evt.total);
+        document.getElementById('progress').innerHTML = percentComplete.toString() + '%'
+      }
+      else
+      {
+        document.getElementById('progress').innerHTML = 'unable to compute';
+      } 
+    }
+    
+    function logAnalysis(evt){
+      console.log(evt.target.responseText);
+			drawViz(JSON.parse(evt.target.responseText));
+    } 
+		var d;
+		function drawViz(data){
+			console.log('Setting up vizualization');
+			d = data;
+			
+			var margin = {top:25, left:25, right:25:, bottom:25};
+			var width = 1200 - margin.right, height = 400 - margin.top - margin.bottom;
+
+			var y = d3.scale.linear()
+											.domain([0, d3.max(data.segments, function(d){
+																								return d.confidence;})])
+											.range([height, 0]);
+
+			var x = d3.scale.linear()
+											.domain([0, data.segments.length])
+											.range([0, width]);
+
+
+
+		}
+    
+    function analysisComplete(evt){
+       console.log(evt.target.responseText);
+       console.log(JSON.parse(evt.target.responseText));
+       var data = JSON.parse(evt.target.responseText);
+       var xhr = new XMLHttpRequest();
+       xhr.addEventListener("error", uploadFailed, false);
+       xhr.addEventListener("abort", uploadCanceled, false);
+       xhr.addEventListener("load", logAnalysis, false);
+			 
+			 var fd = new FormData();
+			 fd.append('url',  data.response.track.audio_summary.analysis_url);
+       xhr.open("POST", '/analyze');
+       xhr.send(fd);
+    }
+
+    function getTrackAnalysis(responseObject) {
+      console.log('Getting track anaylsis');
+      var xhr = new XMLHttpRequest();
+      var fd = new FormData();
+
+      xhr.addEventListener("error", uploadFailed, false);
+      xhr.addEventListener("abort", uploadCanceled, false);
+      xhr.addEventListener("load", analysisComplete, false);
+
+      fd.append('api_key', 'TKE3OE4ABBFDK6UGC');
+      fd.append('id', responseObject.response.track.id);
+      fd.append('bucket', 'audio_summary')
+      console.log( responseObject.response.track.audio_md5);
+      xhr.open("POST", 'http://developer.echonest.com/api/v4/track/analyze');
+      xhr.send(fd);
+    }
+
+    function uploadComplete(evt) {
+      /* This event is raised when the server send back a response */
+      console.log(evt.target.responseText);
+      console.log(JSON.parse(evt.target.responseText));
+      getTrackAnalysis(JSON.parse(evt.target.responseText));
+    }
+
+    function uploadFailed(evt) {
+      alert("There was an error attempting to upload the file.");
+    }
+
+    function uploadCanceled(evt) {
+      alert("The upload has been canceled by the user or the browser dropped the connection.");
+    }  
+    
+    function uploadFile(){
+      console.log('Uploading Track');
+      var xhr = new XMLHttpRequest();
+      var fd = new FormData();
+
+      xhr.upload.addEventListener("progress", uploadProgress, false);
+      
+      xhr.addEventListener("load", uploadComplete, false);
+      xhr.addEventListener("error", uploadFailed, false);
+      xhr.addEventListener("abort", uploadCanceled, false);
+
+      fd.append('api_key', 'TKE3OE4ABBFDK6UGC');
+      fd.append('filetype', 'mp3');
+      fd.append('track', document.getElementById('file_to_upload').files[0]);
+      
+      xhr.open("POST", 'http://developer.echonest.com/api/v4/track/upload');
+      xhr.send(fd);
+    }
+
+    function fileSelected(){
+      var file = document.getElementById('file_to_upload').files[0];
+      if(file){
+        var fileSize = 0;
+        if (file.size > 1024 * 1024)
+          fileSize = (Math.round(file.size * 100 / (1024 * 1024)) / 100).toString() + 'MB';
+        else
+          fileSize =  (Math.round(file.size * 100 / 1024)).toString() + 'KB';
+
+        document.getElementById('fileName').innerHTML = 'Name: ' + file.name;
+        document.getElementById('fileSize').innerHTML = 'Size: '+ fileSize;
+        document.getElementById('fileType').innerHTML = 'Type: '+file.type;
+      }
+    }
+   </script>
+
+</head>
+
+<body>
+  <form id="upload_box" enctype="multipart/form-data" method="post" action="submit.js">
+    <div>
+      <input type="file" name="file_to_upload" id="file_to_upload" onchange="fileSelected();"/>
+    </div>
+    <div id="fileName"></div>
+    <div id="fileSize"></div>
+    <div id="fileType"></div>
+    <div>
+      <input type="button" onclick="uploadFile()" value="Upload" />
+    </div>
+    <div id="progress"></div>
+  </form>
+</body>
+</html>
