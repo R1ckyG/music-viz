@@ -4,7 +4,12 @@
   <title> Upload Please</title>
   <script type="text/javascript" src="http://d3js.org/d3.v2.js"></script>
 	<script type="text/javascript">
-
+    serialize = function(obj) {
+      var str = [];
+      for(var p in obj)
+        str.push(encodeURIComponent(p) + "=" + encodeURIComponent(obj[p]));
+      return str.join("&");
+    }
     function uploadProgress(evt){
       if (evt.lengthComputable) {
         var percentComplete = Math.round(evt.loaded * 100 / evt.total);
@@ -25,52 +30,50 @@
 			console.log('Setting up vizualization');
 			d = data;
 			
-			var margin = {top:25, left:25, right:25:, bottom:25};
+			var margin = {top:25, left:25, right:25, bottom:25};
 			var width = 1200 - margin.right, height = 400 - margin.top - margin.bottom;
 
 			var y = d3.scale.linear()
-											.domain([0, d3.max(data.segments, function(d){
-																								return d.confidence;})])
+											.domain([0, d3.max(data.segments, 
+                                         function(d){
+																								return d.confidence;}
+                                         )])
 											.range([height, 0]);
 
 			var x = d3.scale.linear()
 											.domain([0, data.segments.length])
 											.range([0, width]);
-
-
-
 		}
     
     function analysisComplete(evt){
-       console.log(evt.target.responseText);
-       console.log(JSON.parse(evt.target.responseText));
        var data = JSON.parse(evt.target.responseText);
        var xhr = new XMLHttpRequest();
+      
+       console.log(data); 
        xhr.addEventListener("error", uploadFailed, false);
        xhr.addEventListener("abort", uploadCanceled, false);
        xhr.addEventListener("load", logAnalysis, false);
 			 
-			 var fd = new FormData();
-			 fd.append('url',  data.response.track.audio_summary.analysis_url);
-       xhr.open("POST", '/analyze');
-       xhr.send(fd);
+       xhr.open("GET", data.response.track.audio_summary.analysis_url);
+       xhr.send();
     }
 
     function getTrackAnalysis(responseObject) {
       console.log('Getting track anaylsis');
       var xhr = new XMLHttpRequest();
-      var fd = new FormData();
+      var params = {
+        'api_key': 'TKE3OE4ABBFDK6UGC',
+        'id': responseObject.response.track.id,
+        'bucket': 'audio_summary' 
+      } 
 
       xhr.addEventListener("error", uploadFailed, false);
       xhr.addEventListener("abort", uploadCanceled, false);
       xhr.addEventListener("load", analysisComplete, false);
 
-      fd.append('api_key', 'TKE3OE4ABBFDK6UGC');
-      fd.append('id', responseObject.response.track.id);
-      fd.append('bucket', 'audio_summary')
-      console.log( responseObject.response.track.audio_md5);
-      xhr.open("POST", 'http://developer.echonest.com/api/v4/track/analyze');
-      xhr.send(fd);
+      console.log(serialize(params));
+      xhr.open("GET", 'http://developer.echonest.com/api/v4/track/profile?' + serialize(params));
+      xhr.send();
     }
 
     function uploadComplete(evt) {
