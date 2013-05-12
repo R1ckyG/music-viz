@@ -2,7 +2,18 @@
 <html>
 <head>
   <title> Upload Please</title>
-  <script type="text/javascript" src="http://d3js.org/d3.v2.js"></script>
+  <style>
+    path {
+      stroke: steelblue;
+      stroke-width: 2;
+      fill: none;
+    }
+  
+    #graph{
+      padding-left: 20px;
+    }
+  </style>
+  <script type="text/javascript" src="http://d3js.org/d3.v3.js"></script>
 	<script type="text/javascript">
     serialize = function(obj) {
       var str = [];
@@ -22,16 +33,22 @@
     }
     
     function logAnalysis(evt){
-      console.log(evt.target.responseText);
 			drawViz(JSON.parse(evt.target.responseText));
+      console.log(JSON.parse(evt.target.responseText));
     } 
 		var d;
 		function drawViz(data){
 			console.log('Setting up vizualization');
 			d = data;
 			
-			var margin = {top:25, left:25, right:25, bottom:25};
-			var width = 1200 - margin.right, height = 400 - margin.top - margin.bottom;
+			var margin = {top:25, left:25, right:25, bottom:25},
+          padding = {top:30, right:30, bottom:30, left:30};
+			var outerWidth = data.segments.length * 10, 
+          outerHeight = 400,
+          innerWidth = outerWidth - margin.left - margin.right,
+          innerHeight = outerHeight - margin.top - margin.bottom,
+          width = innerWidth - padding.left - padding.right
+          height = innerHeight - padding.top - padding.bottom;
 
 			var y = d3.scale.linear()
 											.domain([0, d3.max(data.segments, 
@@ -41,9 +58,36 @@
 											.range([height, 0]);
 
 			var x = d3.scale.linear()
-											.domain([0, data.segments.length])
+											.domain([0, data.track.duration])
 											.range([0, width]);
-		}
+		
+      var viz = d3.select("body")
+                  .append("svg:svg")
+                  .attr("width", outerWidth)
+                  .attr("height", outerHeight);
+      
+      var g = viz.append("svg:g")
+         .attr("transform", "translate(" + padding.left +"," + padding.top +")");
+      
+      var xAxis = d3.svg.axis().scale(x)
+                    .orient("bottom").ticks(Math.round(data.track.duration) / 5);
+      var yAxis = d3.svg.axis().scale(y)
+                    .orient("left").ticks(10);                                        
+      var line = d3.svg.line()
+                   .x(function(d, i){return x(d.start)})
+                   .y(function(d){return y(d.confidence)});
+      g.append("path")
+         .attr("class", "line")
+         .attr("d", line(data.segments));
+    
+      g.append("g")
+         .attr("class", "y axis")
+         .call(yAxis);
+      g.append("g")
+         .attr("class", "x axis")
+         .attr("transform", "translate(0," + height + ")")
+         .call(xAxis);
+    }
     
     function analysisComplete(evt){
        var data = JSON.parse(evt.target.responseText);
@@ -79,8 +123,19 @@
     function uploadComplete(evt) {
       /* This event is raised when the server send back a response */
       console.log(evt.target.responseText);
-      console.log(JSON.parse(evt.target.responseText));
-      getTrackAnalysis(JSON.parse(evt.target.responseText));
+      data = JSON.parse(evt.target.responseText);
+      try { 
+        console.log('File upload failed');
+        if(data.response.status.code === -1)uploadFile();
+      }catch(e){  
+        console.log(e);
+      }      
+      
+      if(data.response.track.status === "pending"){
+        setTimeout(function(){getTrackAnalysis(data)}, 5000);
+        return;
+      }
+      getTrackAnalysis(data);
     }
 
     function uploadFailed(evt) {
@@ -141,5 +196,6 @@
     </div>
     <div id="progress"></div>
   </form>
+  <div id="graph"></div>
 </body>
 </html>
