@@ -42,6 +42,11 @@
 			console.log('Setting up vizualization');
 			d = data;
       addMetricBox();
+      try{
+        d3.select("#graph-svg").remove();
+      }catch(e){
+        console.log(e);
+      }
 			var margin = {top:25, left:25, right:25, bottom:25},
           padding = {top:30, right:30, bottom:30, left:30};
 			var outerWidth = data.segments.length * 10, 
@@ -65,7 +70,8 @@
       var viz = d3.select("#graph")
                   .append("svg:svg")
                   .attr("width", outerWidth)
-                  .attr("height", outerHeight);
+                  .attr("height", outerHeight)
+                  .attr("id", "graph-svg");
       
       var g = viz.append("svg:g")
          .attr("transform", "translate(" + padding.left +"," + padding.top +")");
@@ -185,15 +191,90 @@
 
     function redrawGraph(){
       console.log('Redrawing Graph');
-      var primaryMetric = $('#primary-metric').val(),
-          secondaryMetric = null;
+      var primaryMetric = $('#primary-metric').val().toLowerCase(),
+          secondaryMetric = null,
+          data = d,
+          graphData = null;
+
       if(primaryMetric.toLowerCase() !== 'confidence'){
         secondaryMetric = parseInt($("#secondary-metric :selected").attr("value"));
       }
       console.log(primaryMetric, secondaryMetric);
+      
+      d3.select("#graph-svg").remove();
+      var margin = {top:25, left:25, right:25, bottom:25},
+          padding = {top:30, right:30, bottom:30, left:30};
+			var outerWidth = data.segments.length * 10, 
+          outerHeight = 400,
+          innerWidth = outerWidth - margin.left - margin.right,
+          innerHeight = outerHeight - margin.top - margin.bottom,
+          width = innerWidth - padding.left - padding.right
+          height = innerHeight - padding.top - padding.bottom,
+          minDomain = d3.min(data.segments, 
+                              function(d){
+                                if(primaryMetric === 'confidence'){
+																  return d.confidence;
+                                }else{
+                                  return d[primaryMetric][secondaryMetric - 1];
+                                }
+                              }),
+          maxDomain = d3.max(data.segments, 
+                              function(d){
+                                if(primaryMetric === 'confidence'){
+																  return d.confidence;
+                                }else{
+                                  return d[primaryMetric][secondaryMetric - 1];
+                                }
+                              });
+
+			var y = d3.scale.linear()
+											.domain([minDomain, maxDomain])
+											.range([height, 0]);
+
+			var x = d3.scale.linear()
+											.domain([0, data.track.duration])
+											.range([0, width]);
+		
+      var viz = d3.select("#graph")
+                  .append("svg:svg")
+                  .attr("width", outerWidth)
+                  .attr("height", outerHeight)
+                  .attr("id", "graph-svg"); 
+      var g = viz.append("svg:g")
+         .attr("transform", "translate(" + padding.left +"," + padding.top +")");
+      
+      var xAxis = d3.svg.axis().scale(x)
+                    .orient("bottom").ticks(Math.round(data.track.duration) / 5);
+      var yAxis = d3.svg.axis().scale(y)
+                    .orient("left").ticks(10);                                        
+      var line = d3.svg.line()
+                   .x(function(d, i){return x(d.start)})
+                   .y(function(d){
+                      if(primaryMetric === 'confidence'){
+                        return y(d.confidence);
+                      }else{
+                        return y(d[primaryMetric][secondaryMetric - 1]);   
+                      }
+                    });
+      g.append("path")
+         .attr("class", "line")
+         .attr("d", line(data.segments));
+    
+      g.append("g")
+         .attr("class", "y axis")
+         .call(yAxis);
+      g.append("g")
+         .attr("class", "x axis")
+         .attr("transform", "translate(0," + height + ")")
+         .call(xAxis);
     }
 
     function addMetricBox(){
+      try{
+        $("#metric-box").remove();
+      }catch(e){
+        console.log(e);
+      }
       var content = '<div id="metric-box">' +
         '<select id="primary-metric" onchange="onMetricSelected();">'+
         '<option>Confidence</option>' +
