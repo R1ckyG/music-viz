@@ -16,12 +16,135 @@
   <script type="text/javascript" src="http://d3js.org/d3.v3.js"></script>
   <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>   
   <script type="text/javascript">
+    var vizState = {
+      step: 0,
+      data: null,
+      stepSize: 1,
+      currentData: null,
+      xScale: null,
+      yScale: null,
+      xDomain: 0,
+      primaryMetric: 'confidence',
+      secondaryMetric: null,
+      fileSystem: null,
+      fileSystemSize: 30 * 1024 * 1024
+    };
+    
+
+    onFSinit = function(fs){
+      console.log('Creating file system named: ' +fs.name);
+      vizState.fileSystem = fs;
+    };
+
+    errorHandler = function(e) {
+      var msg = '';
+
+      switch (e.code) {
+        case FileError.QUOTA_EXCEEDED_ERR:
+          msg = 'QUOTA_EXCEEDED_ERR';
+          break;
+        case FileError.NOT_FOUND_ERR:
+          msg = 'NOT_FOUND_ERR';
+          break;
+        case FileError.SECURITY_ERR:
+          msg = 'SECURITY_ERR';
+          break;
+        case FileError.INVALID_MODIFICATION_ERR:
+          msg = 'INVALID_MODIFICATION_ERR';
+          break;
+        case FileError.INVALID_STATE_ERR:
+          msg = 'INVALID_STATE_ERR';
+          break;
+        default:
+          msg = 'Unknown Error';
+          break;
+      };
+
+      console.log('Error: ' + msg);
+    }
+
+    window.requestFileSystem = window.requestFileSystem 
+                          || window.webkitRequestFileSystem;
+
+
+    window.requestFileSystem(window.TEMPORARY, vizState.fileSystemSize, 
+                              onFSinit, errorHandler);    
+
+    writeFiles = function(files){
+      for(var i = 0, file; file = files[i]; i++){
+        (function(f){
+          //make sure file does not exist
+          var removalErrorHandler = function(e){
+            vizState.fileSystem.root.getFile(f.name, {create: true, exclusive: true},
+              function(fileEntry){
+                vizState.filePath = fileEntry.fullPath;
+                console.log('File path for ' + f.name + ' is ' + fileEntry.fullPath);
+                fileEntry.createWriter(function(fileWriter){
+                  fileWriter.write(f); 
+                }, errorHandler);
+              }, errorHandler);
+          }
+
+          vizState.fileSystem.root.getFile(f.name, {create:false}, function(fileEntry){
+            fileEntry.remove(function(){
+              console.log('Removed ' + f.name);
+              removalErrorHandler(null);
+            }, errorHandler);
+          }, removalErrorHandler);
+          
+        })(file);
+      }
+    }
+    
     serialize = function(obj) {
       var str = [];
       for(var p in obj)
         str.push(encodeURIComponent(p) + "=" + encodeURIComponent(obj[p]));
       return str.join("&");
     }
+
+    errorHandler = function(e) {
+      var msg = '';
+
+      switch (e.code) {
+        case FileError.QUOTA_EXCEEDED_ERR:
+          msg = 'QUOTA_EXCEEDED_ERR';
+          break;
+        case FileError.NOT_FOUND_ERR:
+          msg = 'NOT_FOUND_ERR';
+          break;
+        case FileError.SECURITY_ERR:
+          msg = 'SECURITY_ERR';
+          break;
+        case FileError.INVALID_MODIFICATION_ERR:
+          msg = 'INVALID_MODIFICATION_ERR';
+          break;
+        case FileError.INVALID_STATE_ERR:
+          msg = 'INVALID_STATE_ERR';
+          break;
+        default:
+          msg = 'Unknown Error';
+          break;
+      };
+
+      console.log('Error: ' + msg);
+    }
+    
+    createAudioControls = function(){
+      var audioElement = '<audio id="audioController" controls>' +
+                 '<source src="filesystem:http://fourjoe.com:8888/temporary/' + 
+                 encodeURIComponent(vizState.filePath.substring(1)) + '" type="audio/mp3">' + 
+                 '</audio>';
+
+      try{
+        $('#audioController').remove();
+      }catch(e){
+        console.log(e);
+      }
+      console.log(audioElement);
+      $('#audio').append(audioElement); 
+    }
+
     function uploadProgress(evt){
       if (evt.lengthComputable) {
         var percentComplete = Math.round(evt.loaded * 100 / evt.total);
@@ -33,15 +156,18 @@
       } 
     }
     
-    function logAnalysis(evt){
+    logAnalysis = function(evt){
+      vizState.data = JSON.parse(evt.target.responseText);
 			drawViz(JSON.parse(evt.target.responseText));
       console.log(JSON.parse(evt.target.responseText));
     } 
 		var d;
 		function drawViz(data){
 			console.log('Setting up vizualization');
-			d = data;
+      data.segments = vizState.data.segments.slice(0, 50);
+      vizState.currentData = data;
       addMetricBox();
+      createAudioControls();
       try{
         d3.select("#graph-svg").remove();
       }catch(e){
@@ -49,7 +175,7 @@
       }
 			var margin = {top:25, left:25, right:25, bottom:25},
           padding = {top:30, right:30, bottom:30, left:30};
-			var outerWidth = data.segments.length * 10, 
+			var outerWidth = vizState.currentData.segments.length * 10, 
           outerHeight = 400,
           innerWidth = outerWidth - margin.left - margin.right,
           innerHeight = outerHeight - margin.top - margin.bottom,
@@ -57,19 +183,23 @@
           height = innerHeight - padding.top - padding.bottom;
 
 			var y = d3.scale.linear()
-											.domain([0, d3.max(data.segments, 
+											.domain([0, d3.max(vizState.data.segments, 
                                          function(d){
 																								return d.confidence;}
                                          )])
 											.range([height, 0]);
-
+      var dWidth = 0;
+      for(var dIndex in vizState.currentData.segments){
+        dWidth += vizState.currentData.segments[dIndex].duration; 
+      }
+      console.log('Domain: ' + dWidth);
 			var x = d3.scale.linear()
-											.domain([0, data.track.duration])
+											.domain([0, dWidth])
 											.range([0, width]);
-		
+	    	
       var viz = d3.select("#graph")
                   .append("svg:svg")
-                  .attr("width", outerWidth /5)
+                  .attr("width", outerWidth)
                   .attr("height", outerHeight)
                   .attr("id", "graph-svg");
       
@@ -78,15 +208,19 @@
          .attr("transform", "translate(" + padding.left +"," + padding.top +")");
       
       var xAxis = d3.svg.axis().scale(x)
-                    .orient("bottom").ticks(Math.round(data.track.duration) / 5);
+                    .orient("bottom").ticks(Math.round(dWidth) / 5);
       var yAxis = d3.svg.axis().scale(y)
                     .orient("left").ticks(10);                                        
+      x.axis = xAxis;
+      y.axis = yAxis;
+      vizState.xScale = x;
+      vizState.yScale = y;
+      
       var line = d3.svg.line()
                    .x(function(d, i){return x(d.start)})
                    .y(function(d){return y(d.confidence)});
-      g.selectAll('path.line')
-         .data([data.segments])
-         .enter().append("svg:path")
+      vizState.path = g.append('svg:path')
+         .data([vizState.currentData.segments])
          .attr("class", "line")
          .attr("id", "metric-line")
          .attr("d", line);
@@ -94,25 +228,68 @@
       g.append("g")
          .attr("id", "y axis")
          .call(yAxis);
-      g.append("g")
+      vizState.xAxis = g.append("g")
          .attr("id", "x axis")
          .attr("transform", "translate(0," + height + ")")
          .call(xAxis);
       setTimeout(
        translateGraph 
-       ,1000);
+       ,5000);
     }
    
     function translateGraph(){
-      d3.selectAll("#metric-line")
-        .attr('transform', 'translate(-50, 0)')
-      d3.selectAll("#x axis")
-        .attr('transform', 'translate(-50, 0)')
-      d3.selectAll("#y axis")
-        .attr('transform', 'translate(-50, 0)')
+      var beginIndex = 50,
+          endIndex = beginIndex + vizState.stepSize,
+          primaryMetric = vizState.primaryMetric,
+          secondaryMetric = null,
+          tranDuration = 0;
+      if(primaryMetric.toLowerCase() !== 'confidence'){
+        secondaryMetric = vizState.secondaryMetric;
+      }
+      if(!vizState.step){
+        console.log('starting translation'); 
+        document.getElementById('audioController').play();
+      }
+      for(var i = beginIndex; i < endIndex; i++){
+        if(vizState.data.segments.length == i + vizState.step * vizState.stepSize)return;
+        vizState.currentData.segments.push(vizState.data.segments[i + vizState.step * vizState.stepSize]);
+      }
+      for(var i = 0; i < vizState.stepSize; i++){
+        vizState.xDomain += vizState.currentData.segments[i].duration;
+      }
+      tranDuration = vizState.currentData.segments[49].start 
+                   - vizState.currentData.segments[48].start;
+      vizState.step++;
+      vizState.xScale.domain([vizState.currentData.segments[0].start, vizState.currentData.segments[endIndex - 1].start]);
+      var lineFunc = d3.svg.line()
+                   .x(function(d, i){return vizState.xScale(d.start)})
+                   .y(function(d){
+                      if(primaryMetric === 'confidence'){
+                        return vizState.yScale(d.confidence);
+                      }else{
+                        return vizState.yScale(d[primaryMetric][secondaryMetric - 1]);   
+                      }
+                    });
+      d3.select('.line')
+        .attr('d', lineFunc)
+        .attr('transform', null); 
+   
+      vizState.xAxis
+        .transition()
+        .duration(vizState.currentData.segments[endIndex - 1].duration * 1000)
+        .ease('linear')
+        .call(vizState.xScale.axis);
+      vizState.path
+        .transition()
+        .duration(vizState.currentData.segments[endIndex - 1].duration * 1000)
+        .ease('linear')
+        .attr('transform', 'translate(' + vizState.xScale() + ')')
+        .each('end', translateGraph);;
+ 
+      for(var i =0;i < vizState.stepSize;i++){vizState.currentData.segments.shift();}
     }
      
-    function analysisComplete(evt){
+    analysisComplete = function(evt){
        var data = JSON.parse(evt.target.responseText);
        var xhr = new XMLHttpRequest();
       
@@ -125,7 +302,7 @@
        xhr.send();
     }
 
-    function getTrackAnalysis(responseObject) {
+    getTrackAnalysis = function(responseObject) {
       console.log('Getting track anaylsis');
       var xhr = new XMLHttpRequest();
       var params = {
@@ -143,7 +320,7 @@
       xhr.send();
     }
 
-    function uploadComplete(evt) {
+    uploadComplete = function(evt) {
       /* This event is raised when the server send back a response */
       console.log(evt.target.responseText);
       data = JSON.parse(evt.target.responseText);
@@ -175,7 +352,8 @@
       console.log('Uploading Track');
       var xhr = new XMLHttpRequest();
       var fd = new FormData();
-
+      var track = document.getElementById('file_to_upload').files[0];
+      
       xhr.upload.addEventListener("progress", uploadProgress, false);
       
       xhr.addEventListener("load", uploadComplete, false);
@@ -184,10 +362,12 @@
 
       fd.append('api_key', 'TKE3OE4ABBFDK6UGC');
       fd.append('filetype', 'mp3');
-      fd.append('track', document.getElementById('file_to_upload').files[0]);
+      fd.append('track', track);
       
       xhr.open("POST", 'http://developer.echonest.com/api/v4/track/upload');
       xhr.send(fd);
+   
+      writeFiles(document.getElementById('file_to_upload').files); 
     }
 
     function fileSelected(){
@@ -207,26 +387,28 @@
 
     function redrawGraph(){
       console.log('Redrawing Graph');
-      var primaryMetric = $('#primary-metric').val().toLowerCase(),
+      var primaryMetric = vizState.primaryMetric = $('#primary-metric').val().toLowerCase(),
           secondaryMetric = null,
-          data = d,
+          data = JSON.parse(JSON.stringify(vizState.data)),
           graphData = null;
-
+      createAudioControls();
+      data.segments = vizState.data.segments.slice(0, 50);
+      vizState.currentData = data;
       if(primaryMetric.toLowerCase() !== 'confidence'){
-        secondaryMetric = parseInt($("#secondary-metric :selected").attr("value"));
+        secondaryMetric = vizState.secondaryMetric = parseInt($("#secondary-metric :selected").attr("value"));
       }
       console.log(primaryMetric, secondaryMetric);
-      
+      vizState.step = 0;  
       d3.select("#graph-svg").remove();
       var margin = {top:25, left:25, right:25, bottom:25},
           padding = {top:30, right:30, bottom:30, left:30};
-			var outerWidth = data.segments.length * 10, 
+			var outerWidth = vizState.currentData.segments.length * 10, 
           outerHeight = 400,
           innerWidth = outerWidth - margin.left - margin.right,
           innerHeight = outerHeight - margin.top - margin.bottom,
           width = innerWidth - padding.left - padding.right
           height = innerHeight - padding.top - padding.bottom,
-          minDomain = d3.min(data.segments, 
+          minDomain = d3.min(vizState.data.segments, 
                               function(d){
                                 if(primaryMetric === 'confidence'){
 																  return d.confidence;
@@ -234,7 +416,7 @@
                                   return d[primaryMetric][secondaryMetric - 1];
                                 }
                               }),
-          maxDomain = d3.max(data.segments, 
+          maxDomain = d3.max(vizState.data.segments, 
                               function(d){
                                 if(primaryMetric === 'confidence'){
 																  return d.confidence;
@@ -247,22 +429,34 @@
 											.domain([minDomain, maxDomain])
 											.range([height, 0]);
 
-			var x = d3.scale.linear()
-											.domain([0, data.track.duration])
+
+      var dWidth = 0;
+      for(var dIndex in vizState.currentData.segments){
+        dWidth += vizState.currentData.segments[dIndex].duration; 
+      }
+			
+      var x = d3.scale.linear()
+											.domain([0, dWidth])
 											.range([0, width]);
 		
       var viz = d3.select("#graph")
                   .append("svg:svg")
-                  .attr("width", outerWidth / 5)
+                  .attr("width", outerWidth)
                   .attr("height", outerHeight)
                   .attr("id", "graph-svg"); 
       var g = viz.append("svg:g")
          .attr("transform", "translate(" + padding.left +"," + padding.top +")");
       
       var xAxis = d3.svg.axis().scale(x)
-                    .orient("bottom").ticks(Math.round(data.track.duration) / 5);
+                    .orient("bottom").ticks(Math.round(dWidth) / 5);
       var yAxis = d3.svg.axis().scale(y)
                     .orient("left").ticks(10);                                        
+     
+      x.axis = xAxis;
+      y.axis = yAxis;
+      vizState.xScale = x;
+      vizState.yScale = y;
+      
       var line = d3.svg.line()
                    .x(function(d, i){return x(d.start)})
                    .y(function(d){
@@ -272,20 +466,25 @@
                         return y(d[primaryMetric][secondaryMetric - 1]);   
                       }
                     });
-      g.selectAll('path.line')
-         .data([data.segments])
-         .enter().append("svg:path")
+     
+      vizState.path = g.append('svg:path')
+         .data([vizState.currentData.segments])
          .attr("class", "line")
          .attr("id", "metric-line")
          .attr("d", line);
+ 
     
       g.append("g")
          .attr("id", "y axis")
          .call(yAxis);
-      g.append("g")
+     vizState.xAxis = g.append("g")
          .attr("id", "x axis")
          .attr("transform", "translate(0," + height + ")")
          .call(xAxis);
+    
+      setTimeout(
+       translateGraph 
+       ,5000);
     }
 
     function addMetricBox(){
@@ -339,5 +538,6 @@
   </form>
   
   <div id="graph"></div>
+  <div id="audio"></div>
 </body>
 </html>
